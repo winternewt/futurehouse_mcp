@@ -58,7 +58,7 @@ class FutureHouseMCP(FastMCP):
         self.client = FutureHouseClient(api_key=self.api_key)
         
         self.prefix = prefix
-        self.phoenix_only = phoenix_only
+        self.phoenix_only = True
         
         # Register our tools and resources
         self._register_futurehouse_tools()
