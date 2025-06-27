@@ -1,0 +1,60 @@
+[project]
+name = "futurehouse-mcp"
+version = "0.1.0"
+description = "MCP server for FutureHouse platform integration"
+readme = "README.md"
+authors = [
+    { name = "Newton Winter", email = "isoutthere@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "eliot>=1.17.5",
+    "pycomfort>=0.0.18",
+    "fastmcp>=2.8.1",
+    "fastapi>=0.115.13",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+    "typer>=0.9.0",
+    "futurehouse-client>=0.3.19",
+    "python-dotenv>=1.0.0", 
+    "pandas>=2.0.0",
+    "biopython>=1.84",
+    "typer>=0.16.0",
+    "simtk>=0.1.0",
+    "openmm>=8.3.0",
+    "py3dmol>=2.5.0",
+]
+
+[project.scripts]
+futurehouse-mcp = "futurehouse_mcp.server:cli_app_stdio"
+server = "futurehouse_mcp.server:cli_app"
+stdio = "futurehouse_mcp.server:cli_app_stdio"
+sse = "futurehouse_mcp.server:cli_app_sse"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/futurehouse_mcp"]
+
+[tool.hatch.build]
+exclude = [
+    "*.log",
+    "logs/",
+    "images/",
+    ".venv/",
+    ".pytest_cache/",
+    "test/",
+    "*.db",
+    "temp*.sqlite*",
+    "test*.sqlite*",
+    "debug*.sqlite*",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.26.0",
+    "ruff>=0.12.0",
+]

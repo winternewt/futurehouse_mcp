@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "futurehouse-mcp": {
+      "command": "uvx",
+      "args": ["futurehouse-mcp", "server"],
+      "env": {
+        "FUTUREHOUSE_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+} 
