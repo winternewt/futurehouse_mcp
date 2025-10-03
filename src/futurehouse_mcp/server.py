@@ -22,7 +22,7 @@ from ldp.agent import AgentConfig
 
 # Configuration
 DEFAULT_HOST = os.getenv("MCP_HOST", "0.0.0.0")
-DEFAULT_PORT = int(os.getenv("MCP_PORT", "3001"))
+DEFAULT_PORT = int(os.getenv("MCP_PORT", "3011"))
 DEFAULT_TRANSPORT = os.getenv("MCP_TRANSPORT", "streamable-http")
 
 class FutureHouseResult(BaseModel):
@@ -41,7 +41,6 @@ class FutureHouseMCP(FastMCP):
         name: str = "FutureHouse MCP Server",
         api_key: Optional[str] = None,
         prefix: str = "futurehouse_",
-        phoenix_only: bool = False,
         **kwargs
     ):
         """Initialize the FutureHouse tools with client and FastMCP functionality."""
@@ -58,7 +57,6 @@ class FutureHouseMCP(FastMCP):
         self.client = FutureHouseClient(api_key=self.api_key)
         
         self.prefix = prefix
-        self.phoenix_only = True
         
         # Register our tools and resources
         self._register_futurehouse_tools()
@@ -66,43 +64,32 @@ class FutureHouseMCP(FastMCP):
     
     def _register_futurehouse_tools(self):
         """Register FutureHouse-specific tools."""
-        if self.phoenix_only:
-            # Only register the PHOENIX tool
-            self.tool(
-                name=f"{self.prefix}request_phoenix_smiles", 
-                description="Request PHOENIX to generate novel compounds with SMILES notation for drug discovery"
-            )(self.request_phoenix_smiles)
-        else:
-            # Register all tools
-            self.tool(
-                name=f"{self.prefix}submit_task", 
-                description="Submit a task to a FutureHouse job and run it until completion"
-            )(self.submit_task)
-            
-            self.tool(
-                name=f"{self.prefix}submit_task_with_config", 
-                description="Submit a task to a FutureHouse job with custom runtime configuration"
-            )(self.submit_task_with_config)
-            
-            self.tool(
-                name=f"{self.prefix}continue_task", 
-                description="Continue a previous task with a follow-up question"
-            )(self.continue_task)
-            
-            self.tool(
-                name=f"{self.prefix}list_available_jobs", 
-                description="List all available job names in the FutureHouse platform"
-            )(self.list_available_jobs)
-            
-            self.tool(
-                name=f"{self.prefix}create_agent_config", 
-                description="Create a custom agent configuration for task submission"
-            )(self.create_agent_config)
-            
-            self.tool(
-                name=f"{self.prefix}request_phoenix_smiles", 
-                description="Request PHOENIX to generate novel compounds with SMILES notation for drug discovery"
-            )(self.request_phoenix_smiles)
+        # Register model-specific tools
+        self.tool(
+            name=f"{self.prefix}chem_agent", 
+            description="Request PHOENIX model for chemistry tasks: synthesis planning, novel molecule design, and cheminformatics analysis"
+        )(self.chem_agent)
+        
+        self.tool(
+            name=f"{self.prefix}quick_search_agent", 
+            description="Request CROW model for concise scientific search: produces succinct answers citing scientific data sources"
+        )(self.quick_search_agent)
+        
+        self.tool(
+            name=f"{self.prefix}precedent_search_agent", 
+            description="Request OWL model for precedent search: determines if anyone has done something in science"
+        )(self.precedent_search_agent)
+        
+        self.tool(
+            name=f"{self.prefix}deep_search_agent", 
+            description="Request FALCON model for deep search: produces long reports with many sources for literature reviews"
+        )(self.deep_search_agent)
+        
+        # Register continuation tool
+        self.tool(
+            name=f"{self.prefix}continue_task", 
+            description="Continue a previous task with a follow-up question"
+        )(self.continue_task)
     
     def _register_futurehouse_resources(self):
         """Register FutureHouse-specific resources."""
@@ -113,105 +100,102 @@ class FutureHouseMCP(FastMCP):
             Get information about the FutureHouse client capabilities and usage.
             
             This resource contains information about:
-            - Available jobs and their capabilities
+            - Available models and their capabilities
             - Authentication requirements
             - Task submission patterns
-            - Runtime configuration options
             
             Returns:
                 Client information and usage guidelines
             """
             return f"""
-            # FutureHouse Client Information
+            # FutureHouse MCP Server
             
             ## Authentication
             - Uses FutureHouse client with API key authentication
             - API key: {self.api_key[:8]}...
             
-            ## Available Services
-            - Task Submission: Submit queries to available FutureHouse jobs
-            - Job Management: Track and continue tasks
-            - Agent Configuration: Customize agent behavior
-            - Runtime Configuration: Control execution parameters
+            ## Available Models
             
-            ## Available Jobs
-            The platform supports various job types including:
-            - CROW: Research and analysis tasks
-            - And other specialized jobs available on the platform
+            ### PHOENIX
+            - **Task Type**: Chemistry Tasks (Experimental)
+            - **Description**: Synthesis planning, novel molecule design, and cheminformatics analysis
+            - **Example Queries**:
+              - "Show three examples of amide coupling reactions"
+              - "Tell me how to synthesize safinamide & where to buy each reactant"
+              - "Propose 3 novel compounds that could treat a disease"
             
-            ## Task Flow
-            1. Submit a task with a query and job name
-            2. Optionally configure runtime parameters (agent, max_steps, etc.)
-            3. Monitor task execution until completion
-            4. Continue with follow-up questions if needed
+            ### CROW
+            - **Task Type**: Concise Scientific Search
+            - **Description**: Produces succinct answers citing scientific data sources
+            - **Example Queries**:
+              - "What are likely mechanisms for age-related macular degeneration?"
+              - "How compelling is genetic evidence for targeting PTH1R in small cell lung cancer?"
             
-            ## Agent Configuration
-            You can customize the agent used for task execution:
-            - Model selection (e.g., gpt-4o, claude-3, etc.)
-            - Temperature settings
-            - Other agent-specific parameters
+            ### OWL
+            - **Task Type**: Precedent Search
+            - **Description**: Determines if anyone has done something in science
+            - **Example Queries**:
+              - "Has anyone developed efficient non-CRISPR methods for modifying DNA?"
+              - "Has anyone used single-molecule footprinting to examine transcription factor binding?"
             
-            ## Example Usage
+            ### FALCON
+            - **Task Type**: Deep Search
+            - **Description**: Produces long reports with many sources for literature reviews
+            - **Example Queries**:
+              - "What is the latest research on physiological benefits of coffee consumption?"
+              - "What have been the most empirically effective treatments for Ulcerative Colitis?"
+            
+            ## Usage
+            
             ```python
-            # Simple task submission
-            result = await submit_task(
-                job_name="crow",
-                query="What is the molecule known to have the greatest solubility in water?"
-            )
-            
-            # Task with custom configuration
-            result = await submit_task_with_config(
-                job_name="crow",
-                query="How many moons does earth have?",
-                agent_type="SimpleAgent",
-                model="gpt-4o",
-                temperature=0.0,
-                max_steps=10
-            )
+            # Request a model
+            result = await futurehouse_chem_agent(query="Synthesize aspirin")
+            result = await futurehouse_quick_search_agent(query="What causes Alzheimer's disease?")
+            result = await futurehouse_precedent_search_agent(query="Has anyone used CRISPR for malaria treatment?")
+            result = await futurehouse_deep_search_agent(query="Review treatments for diabetes")
             
             # Continue a previous task
-            result = await continue_task(
+            result = await futurehouse_continue_task(
                 previous_task_id="task_123",
-                query="From the previous answer, specifically how many species of crows are there?",
-                job_name="crow"
+                query="Tell me more about the third option",
+                job_name="phoenix"
             )
             ```
             """
     
-    async def submit_task(
+    async def chem_agent(
         self,
-        job_name: str,
         query: str
     ) -> FutureHouseResult:
         """
-        Submit a task to a FutureHouse job and run it until completion.
+        Request PHOENIX model for chemistry tasks: synthesis planning, novel molecule design, and cheminformatics analysis.
+        
+        Example queries:
+        - "Show three examples of amide coupling reactions"
+        - "Tell me how to synthesize safinamide & where to buy each reactant"
+        - "Propose 3 novel compounds that could treat a disease caused by over-expression of DENND1A"
         
         Args:
-            job_name: Name of the job to submit to (e.g., "crow")
-            query: The question or task to submit
+            query: The chemistry question or task to submit
             
         Returns:
-            FutureHouseResult containing the task response
+            FutureHouseResult containing PHOENIX response
         """
-        with start_action(action_type="submit_task", job_name=job_name, query=query[:100] + "..." if len(query) > 100 else query):
+        with start_action(action_type="chem_agent", query=query[:100] + "..." if len(query) > 100 else query):
             try:
-                # Create task request
+                # Create task request for PHOENIX
                 task_data = TaskRequest(
-                    name=JobNames.from_string(job_name),
+                    name=JobNames.PHOENIX,
                     query=query,
                 )
                 
                 # Submit and run task until completion
                 task_responses = self.client.run_tasks_until_done(task_data)
                 
-                # run_tasks_until_done always returns a list
                 if len(task_responses) == 0:
-                    raise Exception("No tasks returned")
+                    raise Exception("No tasks returned from PHOENIX")
                 
-                # Take the last task response (most recent)
                 actual_response = task_responses[-1]
-                
-                # Get the answer - different response types have different fields
                 answer = getattr(actual_response, 'answer', None) or getattr(actual_response, 'formatted_answer', None) or ""
                 
                 return FutureHouseResult(
@@ -219,78 +203,55 @@ class FutureHouseMCP(FastMCP):
                         "task_id": str(actual_response.task_id) if actual_response.task_id else None,
                         "status": actual_response.status,
                         "answer": answer,
-                        "job_name": job_name,
+                        "job_name": "phoenix",
                         "query": query
                     },
                     success=True,
-                    message=f"Task completed successfully with status: {actual_response.status}",
+                    message=f"PHOENIX task completed successfully with status: {actual_response.status}",
                     task_id=str(actual_response.task_id) if actual_response.task_id else None,
                     status=actual_response.status
                 )
                 
             except Exception as e:
                 return FutureHouseResult(
-                    data={"error": str(e), "job_name": job_name, "query": query},
+                    data={"error": str(e), "job_name": "phoenix", "query": query},
                     success=False,
-                    message=f"Failed to submit task: {str(e)}"
+                    message=f"Failed to submit PHOENIX request: {str(e)}"
                 )
     
-    async def submit_task_with_config(
+    async def quick_search_agent(
         self,
-        job_name: str,
-        query: str,
-        agent_type: str = "SimpleAgent",
-        model: str = "gpt-4o",
-        temperature: float = 0.0,
-        max_steps: int = 10,
-        agent_kwargs: Optional[Dict[str, Any]] = None
+        query: str
     ) -> FutureHouseResult:
         """
-        Submit a task to a FutureHouse job with custom runtime configuration.
+        Request CROW model for concise scientific search: produces succinct answers citing scientific data sources.
+        
+        Example queries:
+        - "What are likely mechanisms by which mutations near HTRA1 might cause age-related macular degeneration?"
+        - "How compelling is genetic evidence for targeting PTH1R in small cell lung cancer?"
+        - "What factors limit the wavelengths of light detectable by mammalian eyes?"
         
         Args:
-            job_name: Name of the job to submit to (e.g., "crow")
-            query: The question or task to submit
-            agent_type: Type of agent to use (default: "SimpleAgent")
-            model: Model to use for the agent (default: "gpt-4o")
-            temperature: Temperature setting for the model (default: 0.0)
-            max_steps: Maximum number of steps for task execution (default: 10)
-            agent_kwargs: Additional agent configuration parameters
+            query: The scientific question to submit
             
         Returns:
-            FutureHouseResult containing the task response
+            FutureHouseResult containing CROW response
         """
-        with start_action(action_type="submit_task_with_config", job_name=job_name, model=model):
+        with start_action(action_type="quick_search_agent", query=query[:100] + "..." if len(query) > 100 else query):
             try:
-                # Prepare agent kwargs
-                final_agent_kwargs = {"model": model, "temperature": temperature}
-                if agent_kwargs:
-                    final_agent_kwargs.update(agent_kwargs)
-                
-                # Create agent configuration
-                agent = AgentConfig(
-                    agent_type=agent_type,
-                    agent_kwargs=final_agent_kwargs,
-                )
-                
-                # Create task request with runtime config
+                # Create task request for CROW
                 task_data = TaskRequest(
-                    name=JobNames.from_string(job_name),
+                    name=JobNames.CROW,
                     query=query,
-                    runtime_config=RuntimeConfig(agent=agent, max_steps=max_steps),
                 )
                 
                 # Submit and run task until completion
                 task_responses = self.client.run_tasks_until_done(task_data)
                 
-                # run_tasks_until_done always returns a list
                 if len(task_responses) == 0:
-                    raise Exception("No tasks returned")
+                    raise Exception("No tasks returned from CROW")
                 
-                # Take the last task response (most recent)
                 actual_response = task_responses[-1]
-                
-                # Get the answer - different response types have different fields
                 answer = getattr(actual_response, 'answer', None) or getattr(actual_response, 'formatted_answer', None) or ""
                 
                 return FutureHouseResult(
@@ -298,27 +259,132 @@ class FutureHouseMCP(FastMCP):
                         "task_id": str(actual_response.task_id) if actual_response.task_id else None,
                         "status": actual_response.status,
                         "answer": answer,
-                        "job_name": job_name,
-                        "query": query,
-                        "config": {
-                            "agent_type": agent_type,
-                            "model": model,
-                            "temperature": temperature,
-                            "max_steps": max_steps,
-                            "agent_kwargs": final_agent_kwargs
-                        }
+                        "job_name": "crow",
+                        "query": query
                     },
                     success=True,
-                    message=f"Task completed successfully with custom config. Status: {actual_response.status}",
+                    message=f"CROW task completed successfully with status: {actual_response.status}",
                     task_id=str(actual_response.task_id) if actual_response.task_id else None,
                     status=actual_response.status
                 )
                 
             except Exception as e:
                 return FutureHouseResult(
-                    data={"error": str(e), "job_name": job_name, "query": query},
+                    data={"error": str(e), "job_name": "crow", "query": query},
                     success=False,
-                    message=f"Failed to submit task with config: {str(e)}"
+                    message=f"Failed to submit CROW request: {str(e)}"
+                )
+    
+    async def precedent_search_agent(
+        self,
+        query: str
+    ) -> FutureHouseResult:
+        """
+        Request OWL model for precedent search: determines if anyone has done something in science.
+        
+        Example queries:
+        - "Has anyone developed efficient non-CRISPR methods for modifying DNA?"
+        - "Has anyone used single-molecule footprinting to examine transcription factor binding in human cells?"
+        - "Has anyone studied using a RAG system to help make better diagnoses for patients?"
+        
+        Args:
+            query: The precedent question to submit
+            
+        Returns:
+            FutureHouseResult containing OWL response
+        """
+        with start_action(action_type="precedent_search_agent", query=query[:100] + "..." if len(query) > 100 else query):
+            try:
+                # Create task request for OWL
+                task_data = TaskRequest(
+                    name=JobNames.OWL,
+                    query=query,
+                )
+                
+                # Submit and run task until completion
+                task_responses = self.client.run_tasks_until_done(task_data)
+                
+                if len(task_responses) == 0:
+                    raise Exception("No tasks returned from OWL")
+                
+                actual_response = task_responses[-1]
+                answer = getattr(actual_response, 'answer', None) or getattr(actual_response, 'formatted_answer', None) or ""
+                
+                return FutureHouseResult(
+                    data={
+                        "task_id": str(actual_response.task_id) if actual_response.task_id else None,
+                        "status": actual_response.status,
+                        "answer": answer,
+                        "job_name": "owl",
+                        "query": query
+                    },
+                    success=True,
+                    message=f"OWL task completed successfully with status: {actual_response.status}",
+                    task_id=str(actual_response.task_id) if actual_response.task_id else None,
+                    status=actual_response.status
+                )
+                
+            except Exception as e:
+                return FutureHouseResult(
+                    data={"error": str(e), "job_name": "owl", "query": query},
+                    success=False,
+                    message=f"Failed to submit OWL request: {str(e)}"
+                )
+    
+    async def deep_search_agent(
+        self,
+        query: str
+    ) -> FutureHouseResult:
+        """
+        Request FALCON model for deep search: produces long reports with many sources for literature reviews.
+        
+        Example queries:
+        - "What is the latest research on physiological benefits of high levels of coffee consumption?"
+        - "What genes have been most strongly implicated in causing age-related macular degeneration?"
+        - "What have been the most empirically effective treatments for Ulcerative Colitis?"
+        
+        Args:
+            query: The literature review question to submit
+            
+        Returns:
+            FutureHouseResult containing FALCON response
+        """
+        with start_action(action_type="deep_search_agent", query=query[:100] + "..." if len(query) > 100 else query):
+            try:
+                # Create task request for FALCON
+                task_data = TaskRequest(
+                    name=JobNames.FALCON,
+                    query=query,
+                )
+                
+                # Submit and run task until completion
+                task_responses = self.client.run_tasks_until_done(task_data)
+                
+                if len(task_responses) == 0:
+                    raise Exception("No tasks returned from FALCON")
+                
+                actual_response = task_responses[-1]
+                answer = getattr(actual_response, 'answer', None) or getattr(actual_response, 'formatted_answer', None) or ""
+                
+                return FutureHouseResult(
+                    data={
+                        "task_id": str(actual_response.task_id) if actual_response.task_id else None,
+                        "status": actual_response.status,
+                        "answer": answer,
+                        "job_name": "falcon",
+                        "query": query
+                    },
+                    success=True,
+                    message=f"FALCON task completed successfully with status: {actual_response.status}",
+                    task_id=str(actual_response.task_id) if actual_response.task_id else None,
+                    status=actual_response.status
+                )
+                
+            except Exception as e:
+                return FutureHouseResult(
+                    data={"error": str(e), "job_name": "falcon", "query": query},
+                    success=False,
+                    message=f"Failed to submit FALCON request: {str(e)}"
                 )
     
     async def continue_task(
@@ -382,168 +448,10 @@ class FutureHouseMCP(FastMCP):
                     message=f"Failed to continue task: {str(e)}"
                 )
     
-    async def list_available_jobs(self) -> FutureHouseResult:
-        """
-        List all available job names in the FutureHouse platform.
-        
-        Returns:
-            FutureHouseResult containing available job names
-        """
-        with start_action(action_type="list_available_jobs"):
-            try:
-                # Get available job names from JobNames enum
-                available_jobs = []
-                
-                # Try to get all available job names
-                # We'll check for common attributes/methods in JobNames
-                if hasattr(JobNames, '__members__'):
-                    available_jobs = list(JobNames.__members__.keys())
-                elif hasattr(JobNames, 'CROW'):
-                    # At minimum we know CROW exists from the notebook
-                    available_jobs = ['CROW']
-                else:
-                    # Fallback - try to introspect the class
-                    available_jobs = [attr for attr in dir(JobNames) if not attr.startswith('_')]
-                
-                return FutureHouseResult(
-                    data={
-                        "available_jobs": available_jobs,
-                        "count": len(available_jobs)
-                    },
-                    success=True,
-                    message=f"Found {len(available_jobs)} available jobs"
-                )
-                
-            except Exception as e:
-                return FutureHouseResult(
-                    data={"error": str(e)},
-                    success=False,
-                    message=f"Failed to list available jobs: {str(e)}"
-                )
-    
-    async def create_agent_config(
-        self,
-        agent_type: str = "SimpleAgent",
-        model: str = "gpt-4o",
-        temperature: float = 0.0,
-        additional_kwargs: Optional[Dict[str, Any]] = None
-    ) -> FutureHouseResult:
-        """
-        Create a custom agent configuration that can be used in task submission.
-        
-        Args:
-            agent_type: Type of agent to create (default: "SimpleAgent")
-            model: Model to use for the agent (default: "gpt-4o")
-            temperature: Temperature setting for the model (default: 0.0)
-            additional_kwargs: Additional agent configuration parameters
-            
-        Returns:
-            FutureHouseResult containing the agent configuration
-        """
-        with start_action(action_type="create_agent_config", agent_type=agent_type, model=model):
-            try:
-                # Prepare agent kwargs
-                agent_kwargs = {"model": model, "temperature": temperature}
-                if additional_kwargs:
-                    agent_kwargs.update(additional_kwargs)
-                
-                # Create agent configuration
-                agent_config = AgentConfig(
-                    agent_type=agent_type,
-                    agent_kwargs=agent_kwargs,
-                )
-                
-                return FutureHouseResult(
-                    data={
-                        "agent_config": {
-                            "agent_type": agent_type,
-                            "agent_kwargs": agent_kwargs
-                        },
-                        "usage_example": {
-                            "description": "Use this config in submit_task_with_config or in RuntimeConfig",
-                            "example": f"RuntimeConfig(agent=agent_config, max_steps=10)"
-                        }
-                    },
-                    success=True,
-                    message=f"Agent configuration created successfully for {agent_type} with model {model}"
-                )
-                
-            except Exception as e:
-                return FutureHouseResult(
-                    data={"error": str(e)},
-                    success=False,
-                    message=f"Failed to create agent config: {str(e)}"
-                )
-
-    async def request_phoenix_smiles(
-        self,
-        query: str
-    ) -> FutureHouseResult:
-        """
-        Request PHOENIX to generate novel compounds with SMILES notation for drug discovery.
-        
-        Example: "Propose 3 novel compounds that could treat a disease caused by over-expression of DENND1A"
-        
-        Args:
-            query: The drug discovery query or disease target description
-            
-        Returns:
-            FutureHouseResult containing PHOENIX response with compound suggestions
-        """
-        with start_action(action_type="request_phoenix_smiles", query=query[:100] + "..." if len(query) > 100 else query):
-            try:
-                # Create task request for PHOENIX
-                task_data = TaskRequest(
-                    name=JobNames.PHOENIX,
-                    query=query,
-                )
-                
-                # Submit and run task until completion
-                task_responses = self.client.run_tasks_until_done(task_data)
-                
-                # run_tasks_until_done always returns a list
-                if len(task_responses) == 0:
-                    raise Exception("No tasks returned from PHOENIX")
-                
-                # Take the last task response (most recent)
-                actual_response = task_responses[-1]
-                
-                # Get the answer - PhoenixTaskResponse has 'answer' field
-                answer = getattr(actual_response, 'answer', None) or getattr(actual_response, 'formatted_answer', None) or ""
-                
-                return FutureHouseResult(
-                    data={
-                        "task_id": str(actual_response.task_id) if actual_response.task_id else None,
-                        "status": actual_response.status,
-                        "answer": answer,
-                        "compounds": answer,  # PHOENIX typically returns compound data
-                        "job_name": "phoenix",
-                        "query": query
-                    },
-                    success=True,
-                    message=f"PHOENIX task completed successfully with status: {actual_response.status}",
-                    task_id=str(actual_response.task_id) if actual_response.task_id else None,
-                    status=actual_response.status
-                )
-                
-            except Exception as e:
-                return FutureHouseResult(
-                    data={"error": str(e), "job_name": "phoenix", "query": query},
-                    success=False,
-                    message=f"Failed to submit PHOENIX request: {str(e)}"
-                )
-
-# Create the MCP server instances lazily to avoid authentication during imports
+# Create the MCP server instance lazily to avoid authentication during imports
 def get_mcp_server():
-    """Get or create the main MCP server instance."""
+    """Get or create the MCP server instance."""
     return FutureHouseMCP()
-
-def get_phoenix_server():
-    """Get or create the PHOENIX-only MCP server instance."""
-    return FutureHouseMCP(
-        name="FutureHouse PHOENIX MCP Server",
-        phoenix_only=True
-    )
 
 # CLI application using typer
 app = typer.Typer()
@@ -563,11 +471,6 @@ def stdio():
     get_mcp_server().run(transport="stdio")
 
 @app.command()
-def stdio_phoenix():
-    """Run the FutureHouse MCP server with stdio transport optimized for PHOENIX drug discovery."""
-    get_phoenix_server().run(transport="stdio")
-
-@app.command()
 def sse(
     host: str = typer.Option(DEFAULT_HOST, help="Host to bind to"),
     port: int = typer.Option(DEFAULT_PORT, help="Port to bind to")
@@ -582,10 +485,6 @@ def cli_app():
 def cli_app_stdio():
     """Entry point for stdio mode."""
     stdio()
-
-def cli_app_stdio_phoenix():
-    """Entry point for stdio-phoenix mode."""
-    stdio_phoenix()
 
 def cli_app_sse():
     """Entry point for SSE mode."""

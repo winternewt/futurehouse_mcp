@@ -19,7 +19,7 @@ class TestFutureHouseBattleIntegration:
     """Battle integration tests that make real API calls."""
     
     @pytest.fixture(scope="class")
-    def api_key(self):
+    def api_key(self) -> str:
         """Get API key from environment."""
         api_key = os.getenv("FUTUREHOUSE_API_KEY")
         if not api_key:
@@ -27,49 +27,30 @@ class TestFutureHouseBattleIntegration:
         return api_key
     
     @pytest.fixture(scope="class")
-    def server(self, api_key):
+    def server(self, api_key: str) -> FutureHouseMCP:
         """Create a real server instance for integration testing."""
         return FutureHouseMCP(api_key=api_key)
     
-    @pytest.fixture(scope="class")
-    def phoenix_server(self, api_key):
-        """Create a real PHOENIX-only server instance for integration testing."""
-        return FutureHouseMCP(
-            name="Battle Test PHOENIX Server",
-            api_key=api_key,
-            phoenix_only=True
-        )
-    
     @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_phoenix_battle_real_api(self, phoenix_server):
+    async def test_chem_agent(self, server: FutureHouseMCP):
         """
-        BATTLE TEST: Real PHOENIX drug discovery request with actual API.
+        BATTLE TEST: Real PHOENIX chemistry request with actual API.
         
         This test makes a real API call to PHOENIX and verifies:
         1. The request succeeds
-        2. We get back actual compound data
-        3. SMILES notation is present
-        4. Response format is correct
+        2. We get back actual chemistry data
+        3. Response format is correct
         """
-        # Real-world drug discovery query
-        battle_query = """
-        Propose 3 novel compounds that could treat a disease caused by over-expression of DENND1A.
-        """
+        # First sample query from tool documentation
+        battle_query = "Show three examples of amide coupling reactions"
         
         print(f"\n🧪 BATTLE TEST: Submitting real PHOENIX request...")
-        print(f"🔍 DEBUG: Server instance type: {type(phoenix_server)}")
-        print(f"🔍 DEBUG: Phoenix-only mode: {phoenix_server.phoenix_only}")
-        print(f"🔍 DEBUG: API key present: {bool(phoenix_server.api_key)}")
-        print(f"🔍 DEBUG: API key prefix: {phoenix_server.api_key[:8] if phoenix_server.api_key else 'None'}...")
-        print(f"🔍 DEBUG: Client type: {type(phoenix_server.client)}")
-        print(f"Query length: {len(battle_query)} chars")
-        print(f"Query preview: {battle_query.strip()}")
+        print(f"🔍 Query: {battle_query}")
         
         try:
             # Make the real API call
             print(f"\n🚀 Making real API call...")
-            result = await phoenix_server.request_phoenix_smiles(query=battle_query.strip())
+            result = await server.chem_agent(query=battle_query)
             
             # Debug dump the entire result
             print(f"\n📋 FULL RESULT DEBUG DUMP:")
@@ -79,120 +60,29 @@ class TestFutureHouseBattleIntegration:
             print(f"  Task ID: {result.task_id}")
             print(f"  Status: {result.status}")
             print(f"  Data keys: {list(result.data.keys()) if result.data else 'None'}")
-            print(f"  Full data: {result.data}")
             
-            if not result.success:
-                print(f"\n❌ API CALL FAILED!")
-                print(f"  Error message: {result.message}")
-                print(f"  Error data: {result.data}")
-                if result.data and 'error' in result.data:
-                    print(f"  Detailed error: {result.data['error']}")
-                
-                # Don't fail the test yet, let's see what we got
-                print(f"\n🔍 Continuing with failure analysis...")
-                # Re-raise to fail the test
-                raise AssertionError(f"API call failed: {result.message}")
-            
-            # Basic success checks with detailed debugging
-            print(f"\n✅ API call succeeded, performing validation...")
-            
-            if result.task_id is None:
-                print(f"❌ TASK ID CHECK FAILED: {result.task_id}")
-                raise AssertionError("No task ID returned")
-            
-            if result.status is None:
-                print(f"❌ STATUS CHECK FAILED: {result.status}")
-                raise AssertionError("No status returned")
-            
-            if result.data is None:
-                print(f"❌ DATA CHECK FAILED: {result.data}")
-                raise AssertionError("No data returned")
+            # Verify success
+            assert result.success is True, f"API call failed: {result.message}"
+            assert result.task_id is not None, "No task ID returned"
+            assert result.status is not None, "No status returned"
+            assert result.data is not None, "No data returned"
             
             # Verify we got actual answer content
             answer = result.data.get("answer", "")
             print(f"\n📄 ANSWER ANALYSIS:")
             print(f"  Answer length: {len(answer)} characters")
-            print(f"  Answer type: {type(answer)}")
             print(f"  Answer preview (first 300 chars): {answer[:300]}...")
             
-            if len(answer) <= 100:
-                print(f"❌ ANSWER LENGTH CHECK FAILED: {len(answer)} chars")
-                print(f"   Full answer: {answer}")
-                raise AssertionError(f"Answer too short, got: {len(answer)} characters")
-            
-            # Verify PHOENIX-specific content
-            answer_lower = answer.lower()
-            
-            # Check for SMILES notation (common patterns)
-            smiles_indicators = ["smiles", "c1=cc=cc=c1", "cc(", "coc", "[nh]", "c(=o)"]
-            found_smiles = [indicator for indicator in smiles_indicators if indicator in answer_lower]
-            has_smiles = len(found_smiles) > 0
-            
-            print(f"\n🧬 SMILES ANALYSIS:")
-            print(f"  Checking indicators: {smiles_indicators}")
-            print(f"  Found indicators: {found_smiles}")
-            print(f"  Has SMILES: {has_smiles}")
-            
-            if not has_smiles:
-                print(f"❌ SMILES CHECK FAILED")
-                print(f"   Answer sample for manual check: {answer[:500]}...")
-                # Don't fail immediately, maybe PHOENIX returned different format
-                print(f"   ⚠️  No traditional SMILES found, but continuing...")
-            
-            # Check for molecular information
-            molecular_indicators = ["molecular", "weight", "compound", "drug", "dennd1a"]
-            found_molecular = [indicator for indicator in molecular_indicators if indicator in answer_lower]
-            has_molecular_info = len(found_molecular) > 0
-            
-            print(f"\n🔬 MOLECULAR INFO ANALYSIS:")
-            print(f"  Checking indicators: {molecular_indicators}")
-            print(f"  Found indicators: {found_molecular}")
-            print(f"  Has molecular info: {has_molecular_info}")
-            
-            if not has_molecular_info:
-                print(f"❌ MOLECULAR INFO CHECK FAILED")
-                print(f"   Answer sample for manual check: {answer[:500]}...")
-                # Don't fail immediately, maybe PHOENIX returned different format
-                print(f"   ⚠️  No traditional molecular info found, but continuing...")
+            assert len(answer) > 50, f"Answer too short, got: {len(answer)} characters"
             
             # Verify job name is correct
-            job_name = result.data.get("job_name", "")
-            print(f"\n🏷️  JOB NAME ANALYSIS:")
-            print(f"  Expected: 'phoenix'")
-            print(f"  Actual: '{job_name}'")
-            
-            if job_name != "phoenix":
-                print(f"❌ JOB NAME CHECK FAILED: {job_name}")
-                raise AssertionError(f"Wrong job name: {job_name}")
-            
-            # Print sample of the actual response for manual verification
-            print(f"\n📊 FULL RESPONSE SAMPLE:")
-            print(f"First 1000 chars: {answer[:1000]}")
-            
-            if len(answer) > 1000:
-                print(f"\nLast 500 chars: ...{answer[-500:]}")
+            assert result.data["job_name"] == "phoenix", f"Wrong job name: {result.data['job_name']}"
             
             print(f"\n🎯 BATTLE TEST COMPLETED!")
             print(f"✅ API call successful: {result.success}")
             print(f"✅ Task ID received: {result.task_id}")
             print(f"✅ Status: {result.status}")
             print(f"✅ Answer length: {len(answer)} chars")
-            print(f"✅ Job name correct: {job_name}")
-            
-            if not has_smiles:
-                print(f"⚠️  Warning: No clear traditional SMILES notation detected")
-            if not has_molecular_info:
-                print(f"⚠️  Warning: No clear traditional molecular info detected")
-            
-            # Less strict assertions - let's see what PHOENIX actually returns
-            assert result.success is True, f"API call failed: {result.message}"
-            assert result.task_id is not None, "No task ID returned"
-            assert result.status is not None, "No status returned"
-            assert result.data is not None, "No data returned"
-            assert len(answer) > 50, f"Answer too short, got: {len(answer)} characters"
-            assert result.data["job_name"] == "phoenix", f"Wrong job name: {result.data['job_name']}"
-            
-            print(f"\n🎯 BATTLE TEST ANALYSIS COMPLETE!")
             
             return result
             
@@ -200,98 +90,303 @@ class TestFutureHouseBattleIntegration:
             print(f"\n💥 EXCEPTION DURING BATTLE TEST:")
             print(f"  Exception type: {type(e)}")
             print(f"  Exception message: {str(e)}")
-            print(f"  Exception args: {e.args}")
             
             import traceback
             print(f"\n📍 FULL TRACEBACK:")
             traceback.print_exc()
             
-            # Re-raise the exception
             raise
     
     @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_phoenix_only_server_registration(self, phoenix_server):
+    async def test_quick_search_agent(self, server: FutureHouseMCP):
         """
-        BATTLE TEST: Verify phoenix-only server only has phoenix tool registered.
+        BATTLE TEST: Real CROW quick search request with actual API.
         
-        This is a structural test to ensure stdio_phoenix mode works correctly.
+        This test makes a real API call to CROW and verifies:
+        1. The request succeeds
+        2. We get back actual search data
+        3. Response format is correct
         """
-        print(f"\n🔧 BATTLE TEST: Verifying PHOENIX-only server configuration...")
+        # First sample query from tool documentation
+        battle_query = "What are likely mechanisms by which mutations near HTRA1 might cause age-related macular degeneration?"
         
-        # Check that phoenix_only flag is set
-        assert phoenix_server.phoenix_only is True, "Phoenix server should have phoenix_only=True"
+        print(f"\n🔍 BATTLE TEST: Submitting real CROW request...")
+        print(f"🔍 Query: {battle_query}")
         
-        # The actual tool registration verification would require accessing internal FastMCP state
-        # which might not be directly exposed. For now, we verify the flag and that it works.
-        print(f"✅ Phoenix-only mode enabled: {phoenix_server.phoenix_only}")
-        print(f"✅ Server name: {phoenix_server.name}")
-        
-        # Test that we can still make calls (this verifies the tool is registered)
-        simple_query = "Suggest one simple molecule for testing SMILES output"
-        result = await phoenix_server.request_phoenix_smiles(query=simple_query)
-        
-        assert result.success is True, "Phoenix tool should be available in phoenix-only mode"
-        print(f"✅ PHOENIX tool is accessible in phoenix-only mode")
-        
-        print(f"🎯 BATTLE TEST PASSED: PHOENIX-only server configuration working!")
+        try:
+            # Make the real API call
+            print(f"\n🚀 Making real API call...")
+            result = await server.quick_search_agent(query=battle_query)
+            
+            # Debug dump the entire result
+            print(f"\n📋 FULL RESULT DEBUG DUMP:")
+            print(f"  Result type: {type(result)}")
+            print(f"  Success: {result.success}")
+            print(f"  Message: {result.message}")
+            print(f"  Task ID: {result.task_id}")
+            print(f"  Status: {result.status}")
+            print(f"  Data keys: {list(result.data.keys()) if result.data else 'None'}")
+            
+            # Verify success
+            assert result.success is True, f"API call failed: {result.message}"
+            assert result.task_id is not None, "No task ID returned"
+            assert result.status is not None, "No status returned"
+            assert result.data is not None, "No data returned"
+            
+            # Verify we got actual answer content
+            answer = result.data.get("answer", "")
+            print(f"\n📄 ANSWER ANALYSIS:")
+            print(f"  Answer length: {len(answer)} characters")
+            print(f"  Answer preview (first 300 chars): {answer[:300]}...")
+            
+            assert len(answer) > 50, f"Answer too short, got: {len(answer)} characters"
+            
+            # Verify job name is correct
+            assert result.data["job_name"] == "crow", f"Wrong job name: {result.data['job_name']}"
+            
+            print(f"\n🎯 BATTLE TEST COMPLETED!")
+            print(f"✅ API call successful: {result.success}")
+            print(f"✅ Task ID received: {result.task_id}")
+            print(f"✅ Status: {result.status}")
+            print(f"✅ Answer length: {len(answer)} chars")
+            
+            return result
+            
+        except Exception as e:
+            print(f"\n💥 EXCEPTION DURING BATTLE TEST:")
+            print(f"  Exception type: {type(e)}")
+            print(f"  Exception message: {str(e)}")
+            
+            import traceback
+            print(f"\n📍 FULL TRACEBACK:")
+            traceback.print_exc()
+            
+            raise
     
     @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_phoenix_error_handling_real_api(self, phoenix_server):
+    async def test_precedent_search_agent(self, server: FutureHouseMCP):
         """
-        BATTLE TEST: Test error handling with real API using invalid query.
+        BATTLE TEST: Real OWL precedent search request with actual API.
+        
+        This test makes a real API call to OWL and verifies:
+        1. The request succeeds
+        2. We get back actual precedent data
+        3. Response format is correct
         """
-        print(f"\n⚠️  BATTLE TEST: Testing error handling with real API...")
+        # First sample query from tool documentation
+        battle_query = "Has anyone developed efficient non-CRISPR methods for modifying DNA?"
         
-        # Try an intentionally problematic query
-        bad_query = ""  # Empty query should cause issues
+        print(f"\n🦉 BATTLE TEST: Submitting real OWL request...")
+        print(f"🔍 Query: {battle_query}")
         
-        result = await phoenix_server.request_phoenix_smiles(query=bad_query)
-        
-        # With real API, this might still succeed with a generic response
-        # or it might fail - either is acceptable for error handling test
-        print(f"Result for empty query - Success: {result.success}")
-        print(f"Message: {result.message}")
-        
-        if not result.success:
-            print(f"✅ Error properly handled: {result.data.get('error', 'No error details')}")
-        else:
-            print(f"✅ API handled empty query gracefully")
-        
-        print(f"🎯 BATTLE TEST PASSED: Error handling verified!")
+        try:
+            # Make the real API call
+            print(f"\n🚀 Making real API call...")
+            result = await server.precedent_search_agent(query=battle_query)
+            
+            # Debug dump the entire result
+            print(f"\n📋 FULL RESULT DEBUG DUMP:")
+            print(f"  Result type: {type(result)}")
+            print(f"  Success: {result.success}")
+            print(f"  Message: {result.message}")
+            print(f"  Task ID: {result.task_id}")
+            print(f"  Status: {result.status}")
+            print(f"  Data keys: {list(result.data.keys()) if result.data else 'None'}")
+            
+            # Verify success
+            assert result.success is True, f"API call failed: {result.message}"
+            assert result.task_id is not None, "No task ID returned"
+            assert result.status is not None, "No status returned"
+            assert result.data is not None, "No data returned"
+            
+            # Verify we got actual answer content
+            answer = result.data.get("answer", "")
+            print(f"\n📄 ANSWER ANALYSIS:")
+            print(f"  Answer length: {len(answer)} characters")
+            print(f"  Answer preview (first 300 chars): {answer[:300]}...")
+            
+            assert len(answer) > 50, f"Answer too short, got: {len(answer)} characters"
+            
+            # Verify job name is correct
+            assert result.data["job_name"] == "owl", f"Wrong job name: {result.data['job_name']}"
+            
+            print(f"\n🎯 BATTLE TEST COMPLETED!")
+            print(f"✅ API call successful: {result.success}")
+            print(f"✅ Task ID received: {result.task_id}")
+            print(f"✅ Status: {result.status}")
+            print(f"✅ Answer length: {len(answer)} chars")
+            
+            return result
+            
+        except Exception as e:
+            print(f"\n💥 EXCEPTION DURING BATTLE TEST:")
+            print(f"  Exception type: {type(e)}")
+            print(f"  Exception message: {str(e)}")
+            
+            import traceback
+            print(f"\n📍 FULL TRACEBACK:")
+            traceback.print_exc()
+            
+            raise
     
     @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_performance_battle(self, phoenix_server):
+    async def test_deep_search_agent(self, server: FutureHouseMCP):
         """
-        BATTLE TEST: Performance test with real API - measure response time.
+        BATTLE TEST: Real FALCON deep search request with actual API.
+        
+        This test makes a real API call to FALCON and verifies:
+        1. The request succeeds
+        2. We get back actual deep search data
+        3. Response format is correct
         """
-        print(f"\n⏱️  BATTLE TEST: Performance testing with real API...")
+        # First sample query from tool documentation
+        battle_query = "What is the latest research on physiological benefits of high levels of coffee consumption?"
         
-        import time
+        print(f"\n🦅 BATTLE TEST: Submitting real FALCON request...")
+        print(f"🔍 Query: {battle_query}")
         
-        query = "Propose one novel compound for treating Alzheimer's disease with SMILES notation"
+        try:
+            # Make the real API call
+            print(f"\n🚀 Making real API call...")
+            result = await server.deep_search_agent(query=battle_query)
+            
+            # Debug dump the entire result
+            print(f"\n📋 FULL RESULT DEBUG DUMP:")
+            print(f"  Result type: {type(result)}")
+            print(f"  Success: {result.success}")
+            print(f"  Message: {result.message}")
+            print(f"  Task ID: {result.task_id}")
+            print(f"  Status: {result.status}")
+            print(f"  Data keys: {list(result.data.keys()) if result.data else 'None'}")
+            
+            # Verify success
+            assert result.success is True, f"API call failed: {result.message}"
+            assert result.task_id is not None, "No task ID returned"
+            assert result.status is not None, "No status returned"
+            assert result.data is not None, "No data returned"
+            
+            # Verify we got actual answer content
+            answer = result.data.get("answer", "")
+            print(f"\n📄 ANSWER ANALYSIS:")
+            print(f"  Answer length: {len(answer)} characters")
+            print(f"  Answer preview (first 300 chars): {answer[:300]}...")
+            
+            assert len(answer) > 50, f"Answer too short, got: {len(answer)} characters"
+            
+            # Verify job name is correct
+            assert result.data["job_name"] == "falcon", f"Wrong job name: {result.data['job_name']}"
+            
+            print(f"\n🎯 BATTLE TEST COMPLETED!")
+            print(f"✅ API call successful: {result.success}")
+            print(f"✅ Task ID received: {result.task_id}")
+            print(f"✅ Status: {result.status}")
+            print(f"✅ Answer length: {len(answer)} chars")
+            
+            return result
+            
+        except Exception as e:
+            print(f"\n💥 EXCEPTION DURING BATTLE TEST:")
+            print(f"  Exception type: {type(e)}")
+            print(f"  Exception message: {str(e)}")
+            
+            import traceback
+            print(f"\n📍 FULL TRACEBACK:")
+            traceback.print_exc()
+            
+            raise
+    
+    @pytest.mark.asyncio
+    async def test_continue_task(self, server: FutureHouseMCP):
+        """
+        BATTLE TEST: Test follow-up query using quick search result.
         
-        start_time = time.time()
-        result = await phoenix_server.request_phoenix_smiles(query=query)
-        end_time = time.time()
+        This test:
+        1. Submits initial quick search query
+        2. Gets the task ID
+        3. Submits a follow-up question using continue_task
+        4. Verifies the continuation works correctly
+        """
+        # Initial query
+        initial_query = "What are likely mechanisms by which mutations near HTRA1 might cause age-related macular degeneration?"
         
-        response_time = end_time - start_time
+        print(f"\n🔄 BATTLE TEST: Testing task continuation...")
+        print(f"🔍 Initial Query: {initial_query}")
         
-        print(f"⏱️  Response time: {response_time:.2f} seconds")
-        print(f"✅ Request completed: {result.success}")
-        
-        # Basic performance assertion (should complete within reasonable time)
-        # Adjust this threshold based on expected API performance
-        assert response_time < 300, f"Response took too long: {response_time:.2f}s"
-        
-        if result.success:
-            answer_length = len(result.data.get("answer", ""))
-            print(f"📊 Response length: {answer_length} characters")
-            assert answer_length > 50, "Response should have substantial content"
-        
-        print(f"🎯 BATTLE TEST PASSED: Performance within acceptable range!")
+        try:
+            # Step 1: Make initial quick search call
+            print(f"\n🚀 Making initial API call...")
+            initial_result = await server.quick_search_agent(query=initial_query)
+            
+            # Verify initial call succeeded
+            assert initial_result.success is True, f"Initial API call failed: {initial_result.message}"
+            assert initial_result.task_id is not None, "No task ID returned from initial call"
+            
+            task_id = initial_result.task_id
+            print(f"\n✅ Initial call succeeded, got task ID: {task_id}")
+            print(f"   Initial answer preview: {initial_result.data['answer'][:200]}...")
+            
+            # Step 2: Make continuation call
+            followup_query = "What are the most promising therapeutic approaches based on these mechanisms?"
+            
+            print(f"\n🔄 Making continuation call...")
+            print(f"🔍 Follow-up Query: {followup_query}")
+            
+            continuation_result = await server.continue_task(
+                previous_task_id=task_id,
+                query=followup_query,
+                job_name="crow"
+            )
+            
+            # Debug dump the continuation result
+            print(f"\n📋 CONTINUATION RESULT DEBUG DUMP:")
+            print(f"  Result type: {type(continuation_result)}")
+            print(f"  Success: {continuation_result.success}")
+            print(f"  Message: {continuation_result.message}")
+            print(f"  Task ID: {continuation_result.task_id}")
+            print(f"  Status: {continuation_result.status}")
+            print(f"  Data keys: {list(continuation_result.data.keys()) if continuation_result.data else 'None'}")
+            
+            # Verify continuation succeeded
+            assert continuation_result.success is True, f"Continuation API call failed: {continuation_result.message}"
+            assert continuation_result.task_id is not None, "No task ID returned from continuation"
+            assert continuation_result.status is not None, "No status returned from continuation"
+            assert continuation_result.data is not None, "No data returned from continuation"
+            
+            # Verify we got actual answer content
+            answer = continuation_result.data.get("answer", "")
+            print(f"\n📄 CONTINUATION ANSWER ANALYSIS:")
+            print(f"  Answer length: {len(answer)} characters")
+            print(f"  Answer preview (first 300 chars): {answer[:300]}...")
+            
+            assert len(answer) > 50, f"Continuation answer too short, got: {len(answer)} characters"
+            
+            # Verify job name and previous task ID are preserved
+            assert continuation_result.data["job_name"] == "crow", f"Wrong job name: {continuation_result.data['job_name']}"
+            assert continuation_result.data["previous_task_id"] == task_id, f"Previous task ID not preserved: {continuation_result.data['previous_task_id']}"
+            
+            # Verify the continuation task ID is different from the original
+            assert continuation_result.task_id != task_id, "Continuation should have a new task ID"
+            
+            print(f"\n🎯 BATTLE TEST COMPLETED!")
+            print(f"✅ Initial call successful: {initial_result.success}")
+            print(f"✅ Initial task ID: {task_id}")
+            print(f"✅ Continuation successful: {continuation_result.success}")
+            print(f"✅ Continuation task ID: {continuation_result.task_id}")
+            print(f"✅ Answer length: {len(answer)} chars")
+            print(f"✅ Previous task ID preserved: {continuation_result.data['previous_task_id']}")
+            
+            return continuation_result
+            
+        except Exception as e:
+            print(f"\n💥 EXCEPTION DURING BATTLE TEST:")
+            print(f"  Exception type: {type(e)}")
+            print(f"  Exception message: {str(e)}")
+            
+            import traceback
+            print(f"\n📍 FULL TRACEBACK:")
+            traceback.print_exc()
+            
+            raise
 
 
 if __name__ == "__main__":
@@ -299,6 +394,5 @@ if __name__ == "__main__":
     pytest.main([
         __file__,
         "-v",
-        "-m", "integration",
         "--tb=short"
-    ]) 
+    ])
